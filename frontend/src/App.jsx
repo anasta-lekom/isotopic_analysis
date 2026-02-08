@@ -431,27 +431,34 @@ const DynamicCategoryChart = () => {
   const handleAnalyze = async (blockIndex, sampleType, measurements) => {
     try {
       // Показываем индикатор загрузки
-      const newBlocks = [...blocks];
-      newBlocks[blockIndex] = { ...newBlocks[blockIndex], analysisResult: { loading: true } };
-      setBlocks(newBlocks);
+      setBlocks((prevBlocks) => {
+        const nextBlocks = [...prevBlocks];
+        nextBlocks[blockIndex] = { ...nextBlocks[blockIndex], analysisResult: { loading: true } };
+        return nextBlocks;
+      });
 
       // Отправляем запрос на бэкенд
       const result = await analyzeData(sampleType, measurements);
 
       // Обновляем результат
-      newBlocks[blockIndex] = { ...newBlocks[blockIndex], analysisResult: result };
-      setBlocks(newBlocks);
+      setBlocks((prevBlocks) => {
+        const nextBlocks = [...prevBlocks];
+        nextBlocks[blockIndex] = { ...nextBlocks[blockIndex], analysisResult: result };
+        return nextBlocks;
+      });
 
 
     } catch (error) {
       console.error('Analysis error:', error);
       // Показываем ошибку
-      const newBlocks = [...blocks];
-      newBlocks[blockIndex] = {
-        ...newBlocks[blockIndex],
-        analysisResult: { error: error.message || 'Ошибка при анализе данных' }
-      };
-      setBlocks(newBlocks);
+      setBlocks((prevBlocks) => {
+        const nextBlocks = [...prevBlocks];
+        nextBlocks[blockIndex] = {
+          ...nextBlocks[blockIndex],
+          analysisResult: { error: error.message || '???????????? ?????? ?????????????? ????????????' }
+        };
+        return nextBlocks;
+      });
     }
   };
 

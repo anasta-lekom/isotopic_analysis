@@ -1,8 +1,8 @@
-version: "3.9"
-
 services:
   app:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: oil_isotope_app
     ports:
       - "8000:8000"

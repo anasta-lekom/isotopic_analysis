@@ -10,6 +10,9 @@ import os
 
 app = FastAPI(title="Oil Isotope ML API")
 
+# Base directory for model files and frontend build
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # CORS (на случай dev)
 app.add_middleware(
     CORSMiddleware,
@@ -28,12 +31,17 @@ oxidation_model = CatBoostClassifier()
 
 
 organic_matter_model_kerogen.load_model(
-    'catboost_multiclass_organic_matter_kerogen.cbm')
+    os.path.join(BASE_DIR, "catboost_multiclass_organic_matter_kerogen.cbm")
+)
 organic_matter_model_oil_bitumoid.load_model(
-    'catboost_multiclass_organic_matter_oil_bitumoid.cbm')
+    os.path.join(BASE_DIR, "catboost_multiclass_organic_matter_oil_bitumoid.cbm")
+)
 thermal_alteration_model.load_model(
-    'catboost_thermal_alteration_knn_imputer.cbm')
-oxidation_model.load_model('catboost_oxidation_no_imputer.cbm')
+    os.path.join(BASE_DIR, "catboost_thermal_alteration_knn_imputer.cbm")
+)
+oxidation_model.load_model(
+    os.path.join(BASE_DIR, "catboost_oxidation_no_imputer.cbm")
+)
 
 
 class PredictionRequest(BaseModel):
@@ -107,8 +115,6 @@ async def predict(req: PredictionRequest):
 
 
 # раздача фронтенда
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
 FRONTEND_DIST = os.path.join(BASE_DIR, "..", "frontend", "dist")
 
 if os.path.exists(FRONTEND_DIST):
