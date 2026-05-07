@@ -223,16 +223,34 @@ const ChartBlock = ({
           <div>
             <strong>Процессы преобразования:</strong>
             <div style={{ marginTop: 10, paddingLeft: 15 }}>
-              <div>
-                <span style={{ fontWeight: "bold" }}>Биодеградация:</span> {result.process.biodegradation}
-              </div>
+              {(mode === "oil" && result.process.thermal === 1) && (
+                <div>
+                  <span style={{ fontWeight: "bold" }}>Биодеградация:</span> {result.process.biodegradation} <span style={{ color: "red", fontWeight: "bold" }}>*</span>
+                </div>
+              )}
+              {!(mode === "oil" && result.process.thermal === 1) && (
+                <div>
+                  <span style={{ fontWeight: "bold" }}>Биодеградация:</span> {result.process.biodegradation}
+                </div>
+              )}
               <div>
                 <span style={{ fontWeight: "bold" }}>Окисление:</span> {result.process.oxidation}
               </div>
               <div>
-                <span style={{ fontWeight: "bold" }}>Термическое воздействие:</span> {result.process.thermal}
+                <span style={{ fontWeight: "bold" }}>Термическое воздействие:</span> {result.process.thermal} {(mode === "bitumoid" || mode === "oil") && result.process.thermal === 1 && <span style={{ color: "red", fontWeight: "bold" }}>*</span>}
+              </div>
+              <div>
+                <span style={{ fontWeight: "bold" }}>Миграция (приход флюида):</span> {result.process.migration_in}
+              </div>
+              <div>
+                <span style={{ fontWeight: "bold" }}>Миграция (уход флюида):</span> {result.process.migration_out} {(mode === "bitumoid" || mode === "oil") && result.process.thermal === 1 && <span style={{ color: "red", fontWeight: "bold" }}>*</span>}
               </div>
             </div>
+            {((mode === "bitumoid" || mode === "oil") && result.process.thermal === 1) && (
+              <div style={{ marginTop: 15, color: "red", fontWeight: "bold", fontSize: 14 }}>
+                * для уточнения процесса необходимо привлечение дополнительной геологической информации
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -516,19 +534,19 @@ const ChartBlock = ({
             </div>
           )}
 
-        {mode === "many_samples" && manySamplesError && (
-          <div
-            style={{
-              marginTop: 20,
-              padding: 20,
-              backgroundColor: "#ffebee",
-              borderRadius: 10,
-              border: "2px solid #f44336"
-            }}
-          >
-            {manySamplesError && <div style={{ color: "#f44336", fontWeight: "bold" }}>{manySamplesError}</div>}
-          </div>
-        )}
+          {mode === "many_samples" && manySamplesError && (
+            <div
+              style={{
+                marginTop: 20,
+                padding: 20,
+                backgroundColor: "#ffebee",
+                borderRadius: 10,
+                border: "2px solid #f44336"
+              }}
+            >
+              {manySamplesError && <div style={{ color: "#f44336", fontWeight: "bold" }}>{manySamplesError}</div>}
+            </div>
+          )}
         </div>
 
         {(mode === "oil" || mode === "bitumoid") && (

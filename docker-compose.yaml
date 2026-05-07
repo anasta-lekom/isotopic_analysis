@@ -6,3 +6,6 @@ services:
     container_name: oil_isotope_app
     ports:
       - "8000:8000"
+    volumes:
+      - ./backend:/app/backend
+      - ./frontend:/app/frontend

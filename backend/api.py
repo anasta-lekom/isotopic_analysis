@@ -13,7 +13,7 @@ from sklearn.linear_model import LinearRegression
 
 app = FastAPI(title="Oil Isotope ML API")
 
-# Base directory for model files and frontend build
+# базовая директория для загрузки моделей и фронтенда
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # CORS (на случай dev)
@@ -41,14 +41,14 @@ organic_matter_model_oil_bitumoid.load_model(
     os.path.join(BASE_DIR, "catboost_multiclass_organic_matter_oil_bitumoid.cbm")
 )
 thermal_alteration_model.load_model(
-    os.path.join(BASE_DIR, "catboost_thermal_alteration_knn_imputer.cbm")
+    os.path.join(BASE_DIR, "catboost_thermal_alteration_no_imputer.cbm")
 )
 oxidation_model.load_model(
-    os.path.join(BASE_DIR, "catboost_oxidation_iterative_imputer.cbm")
+    os.path.join(BASE_DIR, "catboost_oxidation_no_imputer.cbm")
 )
-migration_model_path = os.path.join(BASE_DIR, "catboost_migration.cbm")
-if os.path.exists(migration_model_path):
-    migration_model.load_model(migration_model_path)
+migration_model.load_model(
+    os.path.join(BASE_DIR, "catboost_in_migration_no_imputer.cbm")
+)
 
 
 
@@ -112,10 +112,28 @@ async def predict_express(req: PredictionRequest):
 async def predict_main(req: PredictionRequest):
     X = np.array(req.measurements).reshape(1, -1)
 
+    # Добавление новых признаков
+    sat, aro, res, asph = X[0, 0], X[0, 1], X[0, 2], X[0, 3]
+    new_features = np.array([[
+        asph - res,   # asph-res
+        res - aro,    # res-aro
+        aro - sat,    # aro-sat
+                  
+    ]])
+    X = np.hstack([X, new_features])
+
+
+    therm_features = np.array([[
+        ((asph + res) / 2) - ((sat + aro) / 2)  # heavy-light
+    ]])
+    X_therm = np.hstack([X, therm_features])
+
+
     organic_matter = None
     bio = None
     oxid = None
     therm = None
+    migration = None
 
     # определение процесса
     organic_matter = organic_matter_model_oil_bitumoid.predict(
@@ -124,23 +142,40 @@ async def predict_main(req: PredictionRequest):
     # применение моделей для предсказания процесса
     # биодеградация присуща только для нефтей, но изменения по фракциям такие же, как в термическом воздействии для битумоидов
     # так как не было особо образцов с нефтями, использую модель для термического преобразования
+
     if req.sample_type.lower() == 'нефть':
-        bio = thermal_alteration_model.predict(X).item()
+        bio_proba = thermal_alteration_model.predict_proba(X_therm)[0, 1]
+        bio = int(bio_proba > 0.6)
     else:
         bio = 0
 
     # окисление
     oxid = oxidation_model.predict(X).item()
 
-    # термическое воздействие - проверить нефть/не нефть
-    therm = thermal_alteration_model.predict(X).item()
+    # термическое воздействие 
+    therm_proba = thermal_alteration_model.predict_proba(X_therm)[0, 1]
+    therm = int(therm_proba > 0.6)
+
+    #добавим фичи, которые используются только в модели приходящей мигранции min(heavy)-min(light), min(heavy)-max(light)
+
+    new_features = np.array([[
+        min(asph, res) - min(sat, aro),
+        min(asph, res) - max(sat, aro),             
+    ]])
+    X = np.hstack([X, new_features])
+
+    # миграция
+    migration = migration_model.predict(X).item()
+
 
     return PredictionResponse(
         organic_matter=organic_matter_classes[organic_matter],
         process={
             "biodegradation": bio,
-            "oxidation": oxid,
-            "thermal": therm
+            "thermal": therm,
+            "migration_out": therm,
+            "migration_in": migration,
+            "oxidation": oxid
         },
 
     )
@@ -170,7 +205,7 @@ def detect_outliers(df: pd.DataFrame, threshold_corr=0.7, residual_std_factor=2)
     df["migration"] = None
 
 
-    # Определяем выбросы на основе корреляции между asph и res
+    # определяем выбросы на основе корреляции между asph и res
     if corr > threshold_corr:
 
         X_reg = df[["asph"]].values
@@ -183,24 +218,20 @@ def detect_outliers(df: pd.DataFrame, threshold_corr=0.7, residual_std_factor=2)
         residuals = y - y_pred
         std_res = np.std(residuals)
 
-        df["is_outlier"] = np.abs(residuals) > residual_std_factor * std_res
+        df["is_outlier"] = (np.abs(residuals) > residual_std_factor * std_res).astype(int)
 
     else:
-        df["is_outlier"] = True
+        df["is_outlier"] = 1
 
-    # ---------------------------------------
-    # 2. Маски
-    # ---------------------------------------
-
-    non_outliers_mask = ~df["is_outlier"]
-    outliers_mask = df["is_outlier"]
+   
+    # маски для выбросов и невыбросов
+    non_outliers_mask = df["is_outlier"] == 0
+    outliers_mask = df["is_outlier"] == 1
 
     features_cols = ["sat", "aro", "res", "asph"]
 
-    # ---------------------------------------
-    # 3. НЕ выбросы
-    # ---------------------------------------
 
+    # обработка НЕ выбросов
     if non_outliers_mask.any():
 
         df.loc[non_outliers_mask, "oxidation"] = 0
@@ -229,24 +260,29 @@ def detect_outliers(df: pd.DataFrame, threshold_corr=0.7, residual_std_factor=2)
         )
 
         df.loc[non_outliers_mask, "migration"] = \
-            abs(df.loc[non_outliers_mask, "sat"] -
-                df.loc[non_outliers_mask, "aro"]) > 1
+            (abs(df.loc[non_outliers_mask, "sat"] -
+                df.loc[non_outliers_mask, "aro"]) > 1).astype(int)
 
-    # ---------------------------------------
-    # 4. Выбросы
-    # ---------------------------------------
+
+    # Обработка Выбросов
 
     if outliers_mask.any():
 
+        # Добавление дополнительных признаков для моделей
+        X_outliers = df.loc[outliers_mask, features_cols].values
+        X_outliers_extended = np.column_stack([
+            X_outliers,
+            X_outliers[:, 3] - X_outliers[:, 2],  # asph - res
+            X_outliers[:, 2] - X_outliers[:, 1],  # res - aro
+            X_outliers[:, 1] - X_outliers[:, 0],   # aro - sat
+            (X_outliers[:, 3] + X_outliers[:, 2]) / 2 - (X_outliers[:, 0] + X_outliers[:, 1]) / 2  # heavy - light для термического воздействия
+        ])
+
         df.loc[outliers_mask, "oxidation"] = \
-            oxidation_model.predict(
-                df.loc[outliers_mask, features_cols].values
-            )
+            oxidation_model.predict(X_outliers_extended)
 
         df.loc[outliers_mask, "thermal_alteration"] = \
-            thermal_alteration_model.predict(
-                df.loc[outliers_mask, features_cols].values
-            )
+            thermal_alteration_model.predict(X_outliers_extended)
 
         df.loc[outliers_mask, "OM_model"] = \
             organic_matter_model_oil_bitumoid.predict(
@@ -256,18 +292,14 @@ def detect_outliers(df: pd.DataFrame, threshold_corr=0.7, residual_std_factor=2)
         df.loc[outliers_mask, "OM_Sofer"] = None
 
         df.loc[outliers_mask, "migration"] = \
-            abs(df.loc[outliers_mask, "sat"] -
-                df.loc[outliers_mask, "aro"]) > 1
-        
+            (abs(df.loc[outliers_mask, "sat"] -
+                df.loc[outliers_mask, "aro"]) > 1).astype(int)
+
     # Переводим числовые классы в текст
     df["OM_model"] = df["OM_model"].astype(int)
     df["OM_model"] = df["OM_model"].map(organic_matter_classes)
 
     return corr, df
-
-
-
-
 
 
 
