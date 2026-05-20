@@ -73,8 +73,8 @@ project/
 ### Клонирование репозитория
 
 ```bash
-git clone <URL>
-cd lekomtseva_diplom
+git clone https://github.com/anasta-lekom/isotopic_analysis.git
+cd isotopic_analysis
 ```
 
 ### Сборка и запуск контейнеров
